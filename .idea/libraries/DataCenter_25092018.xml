@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="DataCenter-25092018">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/DataCenter-25092018.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$PROJECT_DIR$/DataCenter-25092018.jar!/doc" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$PROJECT_DIR$/DataCenter-25092018.jar!/" />
+    </SOURCES>
+  </library>
+</component>

@@ -1,0 +1,13 @@
+<component name="libraryTable">
+  <library name="BCM-21092018">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/BCM-21092018.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$PROJECT_DIR$/BCM-21092018.jar!/doc" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$PROJECT_DIR$/BCM-21092018.jar!/" />
+    </SOURCES>
+  </library>
+</component>
