@@ -68,7 +68,9 @@ public interface RequestIP
         REQUEST_INSTRUSCTION,
         REPONSE_INTSTRUCTION,
         ADD_VM,
+        REMOVE_VM,
         ADD_GENERATOR,
+        REMOVE_GENERATOR,
         REQUEST_DISPATCHER,
         REPONSE_DISPATCHER;
 
