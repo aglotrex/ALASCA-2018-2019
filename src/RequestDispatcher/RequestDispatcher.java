@@ -1,5 +1,9 @@
 package RequestDispatcher;
 
+import Handler.RequestNotificationHandlerIP;
+import Handler.RequestSubmissionHandlerIP;
+import Request.RequestIP;
+import Request.RequestP;
 import fr.sorbonne_u.components.AbstractComponent;
 import fr.sorbonne_u.components.exceptions.ComponentShutdownException;
 import fr.sorbonne_u.components.exceptions.ComponentStartException;
@@ -10,7 +14,6 @@ import fr.sorbonne_u.datacenter.software.ports.RequestNotificationInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestNotificationOutboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionOutboundPort;
-import Request.RequestUriI;
 import RequestDispatcher.DispatcherDataVm.VMdispatcher;
 
 import java.util.ArrayList;
@@ -19,7 +22,7 @@ import java.util.HashMap;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class RequestDispatcher extends AbstractComponent implements RequestSubmissionHandlerI, RequestNotificationHandlerI {
+public class RequestDispatcher extends AbstractComponent implements RequestSubmissionHandlerIP, RequestNotificationHandlerIP {
     protected String UriVM;
     protected String UriCA;
 
@@ -32,52 +35,11 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
     // interfaces Generator
     protected RequestSubmissionInboundPort rSinP_GN;
     protected RequestNotificationOutboundPort rNoutP_GN;
+
+    protected RequestNotificationOutboundPort ControleurDadmision;
     protected Thread sortThread;
 
     protected Lock verou = new ReentrantLock();
-
-    @Override
-    public void acceptRequestSubmission(RequestI r) throws Exception {
-        if (r.getClass() != RequestUriI.class) {
-            System.out.println("reception soumision requete");
-            if (VMlist.isEmpty()) {
-                logMessage(" pas de VM");
-                return;
-            }
-            VMdispatcher vm = VMlist.remove(0);
-
-            this.logMessage(this.UriVM + " is using " + vm.getUri());
-
-            vm.acceptRequestSubmission(r, UriVM);
-
-            VMlist.add(vm);
-
-        }
-        else{
-            rNoutP_GN.doDisconnection();
-            this.doPortConnection(this.rNoutP_GN.getPortURI(),((RequestUriI)r).getNotificationURI(),
-                    RequestSubmissionConnector.class.getCanonicalName());
-
-        }
-    }
-
-    @Override
-    public void acceptRequestSubmissionAndNotify(RequestI r) throws Exception {
-        System.out.println("reception soumision requete");
-        if(VMlist.isEmpty()){
-            logMessage(" pas de VM");
-            return;
-        }
-        VMdispatcher vm = VMlist.remove(0);
-
-        this.logMessage(this.UriVM + " is using " + vm.getUri());
-
-        vm.acceptRequestSubmissionAndNotify(r,UriVM);
-
-        VMlist.add(vm);
-
-    }
-
 
     public static enum	PortTypeRequestDispatcher{
         REQUEST_SUBMISSION_OUT_VM,
@@ -89,6 +51,67 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
         REQUEST_DISPACTCHER_GENERAOTOR_URI,
         REQUEST_VIRTUAL_MACHINE_URI;
     }
+
+    @Override
+    public void acceptRequestSubmission(RequestIP r) throws Exception {
+        switch (r.getType()) {
+            case ADD_VM:
+                this.registerVM(r.getURI());
+                break;
+            case ADD_GENERATOR:
+                String UriPort = this.registerGenerator(r.getURI());
+                ControleurDadmision.notifyRequestTermination(new RequestP(UriPort,0,RequestIP.RequestType.REPONSE_DISPATCHER));
+                break;
+            case REQUEST_INSTRUSCTION:
+
+                VMdispatcher vm = VMlist.remove(0);
+                this.logMessage(this.UriVM + " is using " + vm.getUri());
+                vm.acceptRequestSubmission(r, UriVM);
+                VMlist.add(vm);
+
+                break;
+            case REPONSE_CHARGE:
+                for(VMdispatcher vm1 : this.VMlist) {
+                    if (vm1.getUri().equals(r.getURI())) {
+                        vm1.setCharge(r.getValue());
+                        break;
+                    }
+                }
+                break;
+            case REPONSE_INTSTRUCTION:
+                //notification terminaison
+                break;
+        }
+
+    }
+
+    @Override
+    public void acceptRequestSubmissionAndNotify(RequestIP r) throws Exception {
+        // ca veut dire que la request a le même URI
+
+        if(r.getType().equals(RequestIP.RequestType.REQUEST_INSTRUSCTION)) {
+            System.out.println("reception soumision requete");
+            if (VMlist.isEmpty()) {
+                logMessage(" pas de VM");
+                return;
+            }
+            VMdispatcher vm = VMlist.remove(0);
+
+            this.logMessage(this.UriVM + " is using " + vm.getUri());
+
+            vm.acceptRequestSubmissionAndNotify(r, UriVM);
+
+            VMlist.add(vm);
+        }
+        else{
+            this.acceptRequestSubmission(r);
+        }
+
+
+    }
+
+
+
     public RequestDispatcher(int nbThreads, int nbSchedulableThreads,
                              String uri, ArrayList<VMdispatcher> vmUri,
                              String rSinP, String rNinP) throws Exception {
@@ -155,6 +178,8 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
         rsopVM.publishPort();
         this.doPortConnection(rsopVM.getPortURI(),avmUri,
                 RequestSubmissionConnector.class.getCanonicalName() );
+
+
 
 
         RequestNotificationInboundPort rnipVM = new RequestNotificationInboundPort(this);
@@ -272,7 +297,15 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
 
     @Override
     public void acceptRequestTerminationNotification(RequestI r) throws Exception {
-        rNoutP_GN.notifyRequestTermination(r);
+        String uriVM = ((RequestUriI) r).getSubmissionURI();
+
+        for ( VMdispatcher vmD : this.VMlist ) {
+            if( vmD.getUri().equals(uriVM)){
+                vmD.acceptRequestTerminationNotification(r);
+                return;
+            }
+
+        }
     }
 
 }
