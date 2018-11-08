@@ -1,5 +1,6 @@
 package RequestDispatcher.DispatcherDataVm;
 
+import Request.RequestIP;
 import fr.sorbonne_u.datacenter.software.applicationvm.ApplicationVM;
 import fr.sorbonne_u.datacenter.software.interfaces.RequestI;
 import fr.sorbonne_u.datacenter.software.ports.RequestNotificationInboundPort;
@@ -11,23 +12,17 @@ import java.util.Random;
 public class VMdispatcher implements Comparable {
     private String Uri;
     private RequestSubmissionOutboundPort  vmRsop;
-    private RequestNotificationInboundPort vmRnip;
-    private HashMap<ApplicationVM.ApplicationVMPortTypes, String> portTypes;
-    private Integer charge;
+    private long charge;
 
 
     public VMdispatcher(String avmUri,
-                        RequestSubmissionOutboundPort  rsop,
-                        RequestNotificationInboundPort rnip,
-
-                        HashMap<ApplicationVM.ApplicationVMPortTypes, String> vmportTypes){
+                        RequestSubmissionOutboundPort  rsop) throws Exception {
         this.Uri = avmUri;
         this.vmRsop = rsop;
-        this.vmRnip = rnip;
-        this.portTypes = vmportTypes;
         this.charge =0;
     }
     public void terminate () throws Exception {
+
         vmRsop.doDisconnection();
     }
     public void acceptRequestSubmission(RequestI r, String controleurURI) throws Exception {
@@ -36,24 +31,16 @@ public class VMdispatcher implements Comparable {
         }
         vmRsop.submitRequest(r);
     }
-    public void acceptRequestSubmissionAndNotify(RequestI r, String controleurURI) throws Exception {
-        if (!vmRsop.connected()) {
-            throw new Exception(controleurURI + " can't conect to vm.");
-        }
+    public void acceptRequestSubmissionAndNotify(RequestI r) throws Exception {
         vmRsop.submitRequestAndNotify(r);
     }
-    public void acceptRequestTerminationNotification(RequestI r) throws Exception {
 
-        vmRnip.notifyRequestTermination(r);
+    public void setCharge(long charge) {
+        this.charge = charge;
     }
 
-    public Integer getCharge() {
+    public long getCharge() {
         return charge;
-    }
-    public void calcCharge(){
-        //TODO
-        Random a = new Random(100);
-        charge = (Integer) a.nextInt();
     }
 
     public String getUri() {
@@ -62,13 +49,12 @@ public class VMdispatcher implements Comparable {
 
     @Override
     public int compareTo(Object o) {
-        return ((VMdispatcher)o).getCharge().compareTo(this.charge) ;
+        return (int) ( ((VMdispatcher) o).getCharge() - this.charge);
     }
 
     public void shutdown() throws Exception {
 
         this.vmRsop.unpublishPort() ;
-        this.vmRnip.unpublishPort() ;
-
     }
+
 }
