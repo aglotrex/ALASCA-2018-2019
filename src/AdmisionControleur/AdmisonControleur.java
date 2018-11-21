@@ -1,5 +1,6 @@
 package AdmisionControleur;
 
+import Request.RequestP;
 import fr.sorbonne_u.components.AbstractComponent;
 import fr.sorbonne_u.components.interfaces.OfferedI;
 import fr.sorbonne_u.components.interfaces.RequiredI;
@@ -10,8 +11,6 @@ import fr.sorbonne_u.datacenter.software.interfaces.RequestI;
 import fr.sorbonne_u.datacenter.software.interfaces.RequestSubmissionHandlerI;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionOutboundPort;
-import Request.RequestUri;
-import Request.RequestUriI;
 
 import java.util.*;
 
@@ -44,7 +43,7 @@ public class AdmisonControleur extends AbstractComponent  implements OfferedI , 
 
     @Override
     public void acceptRequestSubmission(RequestI r) throws Exception {
-        String sumisionUriRequestGenerator = ((RequestUriI) r).getSubmissionURI();
+       /** String sumisionUriRequestGenerator = ((RequestUriI) r).getSubmissionURI();
         String notificationURIRequestGenerator = ((RequestUriI) r).getSubmissionURI();
 
         String notificqationUriRequestDispatcher = this.UriRequestDispatcher.get(0).getPortURI();
@@ -54,15 +53,15 @@ public class AdmisonControleur extends AbstractComponent  implements OfferedI , 
         this.doPortConnection(rsop.getPortURI()
                 ,notificqationUriRequestDispatcher,
                 RequestSubmissionConnector.class.getCanonicalName());
-        rsop.submitRequest(new RequestUri("",notificationURIRequestGenerator));
+        rsop.submitRequest(new RequestP("",notificationURIRequestGenerator,));
         rsop.doDisconnection();
         this.doPortConnection(rsop.getPortURI()
                 ,sumisionUriRequestGenerator,
                 RequestSubmissionConnector.class.getCanonicalName());
 
-        rsop.submitRequest(new RequestUri(notificqationUriRequestDispatcher,""));
+        rsop.submitRequest(new RequestP(notificqationUriRequestDispatcher,""));
         rsop.doDisconnection();
-
+        **/
 
     }
 

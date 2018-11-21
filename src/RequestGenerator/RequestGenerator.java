@@ -1,30 +1,31 @@
 package RequestGenerator;
 
+
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+
+import Request.RequestIP;
+import Request.RequestP;
+import org.apache.commons.math3.random.RandomDataGenerator;
 import fr.sorbonne_u.components.AbstractComponent;
 import fr.sorbonne_u.components.exceptions.ComponentShutdownException;
 import fr.sorbonne_u.components.exceptions.ComponentStartException;
 import fr.sorbonne_u.datacenter.TimeManagement;
 import fr.sorbonne_u.datacenter.software.connectors.RequestSubmissionConnector;
-import fr.sorbonne_u.datacenter.software.interfaces.*;
+import fr.sorbonne_u.datacenter.software.interfaces.RequestI;
+import fr.sorbonne_u.datacenter.software.interfaces.RequestNotificationHandlerI;
+import fr.sorbonne_u.datacenter.software.interfaces.RequestNotificationI;
+import fr.sorbonne_u.datacenter.software.interfaces.RequestSubmissionI;
 import fr.sorbonne_u.datacenter.software.ports.RequestNotificationInboundPort;
-import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionOutboundPort;
-import fr.sorbonne_u.datacenterclient.requestgenerator.Request;
 import fr.sorbonne_u.datacenterclient.requestgenerator.interfaces.RequestGeneratorManagementI;
 import fr.sorbonne_u.datacenterclient.requestgenerator.ports.RequestGeneratorManagementInboundPort;
 import fr.sorbonne_u.datacenterclient.utils.TimeProcessing;
-import org.apache.commons.math3.random.RandomDataGenerator;
-import Request.RequestUri;
-import Request.RequestUriI;
 
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-
-public class RequestGenerator
+public class				RequestGenerator
         extends		AbstractComponent
-implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
-
-
+        implements	RequestNotificationHandlerI
+{
     public static int	DEBUG_LEVEL = 2 ;
 
     // -------------------------------------------------------------------------
@@ -43,15 +44,14 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
     protected long							meanNumberOfInstructions ;
 
     /** the inbound port provided to manage the component.					*/
-    protected RequestGeneratorManagementInboundPort rgmip ;
-    protected RequestSubmissionInboundPort rsip;
+    protected RequestGeneratorManagementInboundPort	rgmip ;
     /** the output port used to send requests to the service provider.		*/
-    protected RequestSubmissionOutboundPort rsop ;
-    protected String requestSubmissionInboundPortURI_Admission;
+    protected RequestSubmissionOutboundPort	rsop ;
+    protected String							requestSubmissionInboundPortURI ;
     /** the inbound port receiving end of execution notifications.			*/
-    protected RequestNotificationInboundPort rnip ;
+    protected RequestNotificationInboundPort	rnip ;
     /** a future pointing to the next request generation task.				*/
-    protected Future<?> nextRequestTaskFuture ;
+    protected Future<?>						nextRequestTaskFuture ;
 
     // -------------------------------------------------------------------------
     // Constructors
@@ -72,7 +72,8 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
      * @param meanInterArrivalTime				mean inter-arrival time of the requests in ms.
      * @param meanNumberOfInstructions			mean number of instructions of the requests in ms.
      * @param managementInboundPortURI			URI of the management inbound port.
-     *
+     * @param requestSubmissionInboundPortURI	URI of the inbound port to connect to the request processor.
+     * @param requestNotificationInboundPortURI	URI of the inbound port to receive notifications of the request execution progress.
      * @throws Exception							<i>todo.</i>
      */
     public				RequestGenerator(
@@ -80,7 +81,7 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
             double meanInterArrivalTime,
             long meanNumberOfInstructions,
             String managementInboundPortURI,
-            String requestSubmissionInboundPortURI_Admission,
+            String requestSubmissionInboundPortURI,
             String requestNotificationInboundPortURI
     ) throws Exception
     {
@@ -89,7 +90,7 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
         // preconditions check
         assert	meanInterArrivalTime > 0.0 && meanNumberOfInstructions > 0 ;
         assert	managementInboundPortURI != null ;
-        assert	requestSubmissionInboundPortURI_Admission != null ;
+        assert	requestSubmissionInboundPortURI != null ;
         assert	requestNotificationInboundPortURI != null ;
 
         // initialization
@@ -100,8 +101,8 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
         this.rng = new RandomDataGenerator() ;
         this.rng.reSeed() ;
         this.nextRequestTaskFuture = null ;
-        this.requestSubmissionInboundPortURI_Admission =
-                requestSubmissionInboundPortURI_Admission ;
+        this.requestSubmissionInboundPortURI =
+                requestSubmissionInboundPortURI ;
 
         this.addOfferedInterface(RequestGeneratorManagementI.class) ;
         this.rgmip = new RequestGeneratorManagementInboundPort(
@@ -113,12 +114,6 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
         this.rsop = new RequestSubmissionOutboundPort(this) ;
         this.addPort(this.rsop) ;
         this.rsop.publishPort() ;
-
-
-        this.addRequiredInterface(RequestSubmissionI.class) ;
-        this.rsip = new RequestSubmissionInboundPort(this) ;
-        this.addPort(this.rsip) ;
-        this.rsip.publishPort() ;
 
         this.addOfferedInterface(RequestNotificationI.class) ;
         this.rnip =
@@ -149,10 +144,8 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
         try {
             this.doPortConnection(
                     this.rsop.getPortURI(),
-                    requestSubmissionInboundPortURI_Admission,
+                    requestSubmissionInboundPortURI,
                     RequestSubmissionConnector.class.getCanonicalName()) ;
-            rsop.submitRequest(new RequestUri(this.requestSubmissionInboundPortURI_Admission,this.rnip.getPortURI()));
-
         } catch (Exception e) {
             throw new ComponentStartException(e) ;
         }
@@ -219,11 +212,8 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
      */
     public void			startGeneration() throws Exception
     {
-
-
-
-        if (fr.sorbonne_u.datacenterclient.requestgenerator.RequestGenerator.DEBUG_LEVEL == 1) {
-            this.logMessage("RequestUri generator " + this.rgURI + " starting.") ;
+        if (RequestGenerator.DEBUG_LEVEL == 1) {
+            this.logMessage("Request generator " + this.rgURI + " starting.") ;
         }
         this.generateNextRequest() ;
     }
@@ -242,8 +232,8 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
      */
     public void			stopGeneration() throws Exception
     {
-        if (fr.sorbonne_u.datacenterclient.requestgenerator.RequestGenerator.DEBUG_LEVEL == 1) {
-            this.logMessage("RequestUri generator " + this.rgURI + " stopping.") ;
+        if (RequestGenerator.DEBUG_LEVEL == 1) {
+            this.logMessage("Request generator " + this.rgURI + " stopping.") ;
         }
         if (this.nextRequestTaskFuture != null &&
                 !(this.nextRequestTaskFuture.isCancelled() ||
@@ -307,14 +297,15 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
         // generate a random number of instructions for the request.
         long noi =
                 (long) this.rng.nextExponential(this.meanNumberOfInstructions) ;
-        Request r = new Request(this.rgURI + "-" + this.counter++, noi) ;
+        this.logMessage("sending request");
+        RequestP r = new RequestP(this.rgURI + "-" + this.counter++,noi, RequestIP.RequestType.REQUEST_INSTRUSCTION);
         // generate a random delay until the next request generation.
         long interArrivalDelay =
                 (long) this.rng.nextExponential(this.meanInterArrivalTime) ;
 
-        if (fr.sorbonne_u.datacenterclient.requestgenerator.RequestGenerator.DEBUG_LEVEL == 2) {
+        if (RequestGenerator.DEBUG_LEVEL == 2) {
             this.logMessage(
-                    "RequestUri generator " + this.rgURI +
+                    "Request generator " + this.rgURI +
                             " submitting request " + r.getRequestURI() + " at " +
                             TimeProcessing.toString(System.currentTimeMillis() +
                                     interArrivalDelay) +
@@ -330,7 +321,7 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
                             @Override
                             public void run() {
                                 try {
-                                    ((fr.sorbonne_u.datacenterclient.requestgenerator.RequestGenerator)this.getOwner()).
+                                    ((RequestGenerator)this.getOwner()).
                                             generateNextRequest() ;
                                 } catch (Exception e) {
                                     throw new RuntimeException(e) ;
@@ -361,29 +352,10 @@ implements RequestSubmissionHandlerI , RequestNotificationHandlerI {
     {
         assert	r != null ;
 
-        if (fr.sorbonne_u.datacenterclient.requestgenerator.RequestGenerator.DEBUG_LEVEL == 2) {
-            this.logMessage("RequestUri generator " + this.rgURI +
+        if (RequestGenerator.DEBUG_LEVEL == 2) {
+            this.logMessage("Request generator " + this.rgURI +
                     " is notified that request "+ r.getRequestURI() +
                     " has ended.") ;
         }
-    }
-
-    @Override
-    public void acceptRequestSubmission(RequestI r) throws Exception {
-        String PortSomisionRiquestDisatcher = ((RequestUriI) r).getSubmissionURI();
-        this.rsop.doDisconnection();
-        this.rsip.doDisconnection();
-
-        this.doPortConnection(
-                this.rsop.getPortURI(),
-                PortSomisionRiquestDisatcher,
-                RequestSubmissionConnector.class.getCanonicalName()) ;
-        startGeneration();
-
-    }
-
-    @Override
-    public void acceptRequestSubmissionAndNotify(RequestI r) throws Exception {
-
     }
 }

@@ -1,147 +1,227 @@
 package RequestDispatcher;
 
+import Handler.RequestNotificationHandlerIP;
+import Handler.RequestSubmissionHandlerIP;
+import Request.RequestIP;
+import Request.RequestP;
+import RequestDispatcher.DispatcherDataVm.ReqGDispatcher;
 import fr.sorbonne_u.components.AbstractComponent;
 import fr.sorbonne_u.components.exceptions.ComponentShutdownException;
 import fr.sorbonne_u.components.exceptions.ComponentStartException;
-import fr.sorbonne_u.datacenter.software.applicationvm.ApplicationVM;
 import fr.sorbonne_u.datacenter.software.connectors.RequestSubmissionConnector;
 import fr.sorbonne_u.datacenter.software.interfaces.*;
 import fr.sorbonne_u.datacenter.software.ports.RequestNotificationInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestNotificationOutboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionOutboundPort;
-import Request.RequestUriI;
 import RequestDispatcher.DispatcherDataVm.VMdispatcher;
+import org.apache.commons.math3.util.Pair;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
 
-public class RequestDispatcher extends AbstractComponent implements RequestSubmissionHandlerI, RequestNotificationHandlerI {
-    protected String UriVM;
-    protected String UriCA;
+public class RequestDispatcher extends AbstractComponent implements RequestSubmissionHandlerIP, RequestNotificationHandlerIP {
+    protected String Uri;
+
+    protected String UriAdmissionControleur;
+
+    //rececption of
+    protected RequestNotificationInboundPort reqNotifIN_Port;
+    protected RequestSubmissionInboundPort   reqSubmiIN_Port;
 
     protected ArrayList<VMdispatcher> VMlist;
-    // intefaces vm
-    protected RequestSubmissionOutboundPort rSoutP_VM;
-    protected RequestNotificationInboundPort rNinP_VM;
+    protected ArrayList<ReqGDispatcher> ReqGenList;
+
+    protected ArrayList<Pair<String,String>> initialUriVM;
+    protected ArrayList<Pair<String,String>> initialUriReqGen;
 
 
-    // interfaces Generator
-    protected RequestSubmissionInboundPort rSinP_GN;
-    protected RequestNotificationOutboundPort rNoutP_GN;
+    protected RequestNotificationOutboundPort rNoutP_AC;
+
+    protected HashMap<String,Pair<ReqGDispatcher,Long>> requestSubmision;
+
+    protected HashMap<String,VMdispatcher> requestCharge;
+
+    protected ArrayList<Pair<Long,Long>> tempsReponseRequete;
+
     protected Thread sortThread;
 
-    protected Lock verou = new ReentrantLock();
-
-    @Override
-    public void acceptRequestSubmission(RequestI r) throws Exception {
-        if (r.getClass() != RequestUriI.class) {
-            System.out.println("reception soumision requete");
-            if (VMlist.isEmpty()) {
-                logMessage(" pas de VM");
-                return;
-            }
-            VMdispatcher vm = VMlist.remove(0);
-
-            this.logMessage(this.UriVM + " is using " + vm.getUri());
-
-            vm.acceptRequestSubmission(r, UriVM);
-
-            VMlist.add(vm);
-
-        }
-        else{
-            rNoutP_GN.doDisconnection();
-            this.doPortConnection(this.rNoutP_GN.getPortURI(),((RequestUriI)r).getNotificationURI(),
-                    RequestSubmissionConnector.class.getCanonicalName());
-
-        }
-    }
-
-    @Override
-    public void acceptRequestSubmissionAndNotify(RequestI r) throws Exception {
-        System.out.println("reception soumision requete");
-        if(VMlist.isEmpty()){
-            logMessage(" pas de VM");
-            return;
-        }
-        VMdispatcher vm = VMlist.remove(0);
-
-        this.logMessage(this.UriVM + " is using " + vm.getUri());
-
-        vm.acceptRequestSubmissionAndNotify(r,UriVM);
-
-        VMlist.add(vm);
-
-    }
-
-
     public static enum	PortTypeRequestDispatcher{
+        DISPATCHER_URI,
+
+        REQUEST_NOTIFICATION_IN,
+        REQUEST_SBMISSION_IN,
+
         REQUEST_SUBMISSION_OUT_VM,
-        REQUEST_NOTIFICATION_IN_VM,
-
-        REQUEST_SUBMISSION_IN_AC,
-        REQUEST_NOTIFICATION_OUT_AC,
-
-        REQUEST_DISPACTCHER_GENERAOTOR_URI,
-        REQUEST_VIRTUAL_MACHINE_URI;
+        REQUEST_NOTIFICATION_OUT_GN,
+        REQUEST_NOTIFICATION_OUT_AC;
     }
+
+    @Override
+    public void acceptRequestSubmission(RequestIP r) throws Exception {
+
+        switch (r.getType()) {
+            case ADD_VM:
+                this.registerVM(r.getURI());
+                break;
+            case ADD_GENERATOR:
+                this.registerGenerator(r.getURI(),r.getRequestURI());
+                break;
+            case REQUEST_INSTRUSCTION:
+                this.logMessage(this.Uri + " dispatcher receve instruction ");
+                ReqGDispatcher reqG = null;
+                for (ReqGDispatcher reqGtmp :ReqGenList ) {
+                    if( reqGtmp.getUri().equals(r.getURI())) {
+                        reqG = reqGtmp;
+                        break;
+                    }
+                }
+                if (reqG == null)
+                    return;
+
+                VMdispatcher vm = VMlist.remove(0);
+
+
+                this.requestSubmision.put(r.getRequestURI(),new Pair<>(reqG,System.currentTimeMillis()));
+                vm.acceptRequestSubmission(r, Uri);
+                VMlist.add(vm);
+                break;
+
+
+            case REMOVE_VM:
+                VMdispatcher supp=null;
+                for(VMdispatcher vmD : VMlist) {
+                    if (vmD.getUri().equals(r.getURI())) {
+                        supp = vmD;
+                        break;
+                    }
+                }
+                VMlist.remove(supp);
+                supp.terminate();
+                break;
+            case REMOVE_GENERATOR:
+                ReqGDispatcher suppGE = null;
+                for(ReqGDispatcher geD : this.ReqGenList) {
+                    if (geD.getUri().equals(r.getURI())) {
+                        suppGE = geD;
+                        break;
+                    }
+                }
+                ReqGenList.remove(suppGE);
+                suppGE.terminate();
+                break;
+        }
+
+    }
+
+
+
+    @Override
+    public void acceptRequestSubmissionAndNotify(RequestIP r) throws Exception {
+        acceptRequestSubmission(r);
+
+        switch (r.getType()) {
+            case ADD_VM:
+
+                rNoutP_AC.notifyRequestTermination(new RequestP(r.getRequestURI(),
+                                                                this.reqNotifIN_Port.getPortURI(),
+                                                                0,
+                                                                RequestIP.RequestType.ADD_VM));
+                break;
+            case ADD_GENERATOR:
+            case REQUEST_INSTRUSCTION:
+                break;
+
+            case REMOVE_VM:
+                rNoutP_AC.notifyRequestTermination(new RequestP(r.getRequestURI(),this.Uri,0,
+                                                                RequestIP.RequestType.REMOVE_VM));
+
+                break;
+            case REMOVE_GENERATOR :
+                rNoutP_AC.notifyRequestTermination(new RequestP(r.getRequestURI(),this.Uri,0,
+                                                                RequestIP.RequestType.REMOVE_GENERATOR));
+                break;
+        }
+
+
+    }
+
+    public String uriGenerator(String uri){
+        if (uri == null)
+            return java.util.UUID.randomUUID().toString();
+        return uri;
+    }
+
     public RequestDispatcher(int nbThreads, int nbSchedulableThreads,
-                             String uri, ArrayList<VMdispatcher> vmUri,
-                             String rSinP, String rNinP) throws Exception {
+                             String uriCA,      // uri port notification Controleur
+                             HashMap<PortTypeRequestDispatcher,String> uriDispatcher, // liste de uris imposé au Dispatcher a la création
+                             ArrayList<Pair<String,String>> uriVMs, // liste des uris des VM de base + uri des Port de somision a crée
+                             ArrayList<Pair<String,String>> urireqG //list des Génerateur de base + uri de larequete associé a la reponse du disâtcher
+                            ) throws Exception {
         super(nbThreads, nbSchedulableThreads);
-        UriVM = uri;
-        VMlist = vmUri;
+        this.UriAdmissionControleur = uriCA;
+
+        this.Uri = uriGenerator(uriDispatcher.get(PortTypeRequestDispatcher.DISPATCHER_URI));
 
         this.addRequiredInterface(RequestSubmissionI.class) ;
-        this.rSoutP_VM = new RequestSubmissionOutboundPort(this) ;
-        this.addPort(this.rSoutP_VM) ;
-        this.rSoutP_VM.publishPort() ;
-
-        this.rSinP_GN = new RequestSubmissionInboundPort(rSinP, this);
-        this.addPort(this.rSinP_GN);
-        this.rSinP_GN.publishPort();
-        this.addOfferedInterface(RequestSubmissionInboundPort.class);
-
         this.addRequiredInterface(RequestNotificationI.class) ;
-        this.rNoutP_GN = new RequestNotificationOutboundPort(this) ;
-        this.addPort(this.rNoutP_GN) ;
-        this.rNoutP_GN.publishPort() ;
 
-        this.rNinP_VM = new RequestNotificationInboundPort(rNinP, this);
-        this.addPort(this.rNinP_VM);
-        this.rNinP_VM.publishPort();
+        this.addOfferedInterface(RequestSubmissionInboundPort.class);
         this.addOfferedInterface(RequestNotificationInboundPort.class);
+
+        this.initialUriVM     = uriVMs;
+        this.initialUriReqGen = urireqG;
+        this.VMlist = new ArrayList<>();
+        this.ReqGenList = new ArrayList<>();
+
+        String reqNotifIN_Port_URI = uriGenerator( uriDispatcher.get(PortTypeRequestDispatcher.REQUEST_NOTIFICATION_IN));
+        this.reqNotifIN_Port = new RequestNotificationInboundPort(reqNotifIN_Port_URI,this);
+        this.addPort(reqNotifIN_Port);
+        this.reqNotifIN_Port.publishPort() ;
+
+        String reqSubmiIN_Port_URI = uriGenerator( uriDispatcher.get(PortTypeRequestDispatcher.REQUEST_SBMISSION_IN));
+        this.reqSubmiIN_Port = new RequestSubmissionInboundPort(reqSubmiIN_Port_URI,this);
+        this.addPort(reqSubmiIN_Port);
+        this.reqSubmiIN_Port.publishPort() ;
+
+        String reqNotifOUT_AC_Port_URI = uriGenerator( uriDispatcher.get(PortTypeRequestDispatcher.REQUEST_NOTIFICATION_OUT_AC));
+        this.rNoutP_AC = new RequestNotificationOutboundPort(reqNotifOUT_AC_Port_URI,this) ;
+        this.addPort(this.rNoutP_AC) ;
+        this.rNoutP_AC.publishPort() ;
+
 
         sortThread = new Thread(new Thread(new Runnable() {
             @Override
             public void run() {
-                int indice = 0;
-                while (true) {
-                    while (indice <= VMlist.size()) {
-                        if (indice <= VMlist.size())
-                            indice = 0;
-                    }
-                    //verou.lock();
-                    Collections.sort(VMlist);
-                    //verou.unlock();
+                try {
+                    int indice = 0;
+                    while (true) {
+                        for(VMdispatcher vm : VMlist){
+                            String requestUri = java.util.UUID.randomUUID().toString();
 
-                    try {
+                            //vm.acceptRequestSubmissionAndNotify(new RequestP(requestUri,null,0,
+                            //                RequestIP.RequestType.REQUEST_CHARGE));
+                            //TODO addapté la VM
+
+                        }
+                        Collections.sort(VMlist);
+
                         wait(5000);
-                    } catch (InterruptedException e) {
-                        e.printStackTrace();
                     }
+                }
+                catch (Exception e) {
+                    e.printStackTrace();
                 }
             }
         }));
     }
     public void registerVM(String avmUri) throws Exception {
+        registerVM(avmUri,java.util.UUID.randomUUID().toString());
+    }
+    public void registerVM(String avmUri,String uriPortVM) throws Exception {
 
 
-        HashMap<ApplicationVM.ApplicationVMPortTypes, String> avmURIs = new HashMap<>();
         for ( VMdispatcher vmD : VMlist ) {
             if (vmD.getUri().equals(avmUri)){
                 this.logMessage("Register AVM : alredy in list.");
@@ -150,74 +230,66 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
         }
 
 
-        RequestSubmissionOutboundPort rsopVM = new RequestSubmissionOutboundPort(this);
+        RequestSubmissionOutboundPort rsopVM = new RequestSubmissionOutboundPort(uriPortVM,this);
         this.addPort(rsopVM);
         rsopVM.publishPort();
         this.doPortConnection(rsopVM.getPortURI(),avmUri,
                 RequestSubmissionConnector.class.getCanonicalName() );
 
 
-        RequestNotificationInboundPort rnipVM = new RequestNotificationInboundPort(this);
-        this.addPort(rnipVM);
-        rnipVM.publishPort();
 
-        this.doPortConnection(rnipVM.getPortURI(),avmUri,
-                RequestNotificationHandlerI.class.getCanonicalName() );
-
-
-        VMdispatcher vm = new VMdispatcher(avmUri,rsopVM,rnipVM,avmURIs);
+        VMdispatcher vm = new VMdispatcher(avmUri,rsopVM);
         VMlist.add(vm);
 
-        this.logMessage(this.UriVM + " : " + avmURIs + " has been added.");
+        this.logMessage( rsopVM.getPortURI() + " has been added.");
+
 
     }
-    public void registerVM(HashMap<ApplicationVM.ApplicationVMPortTypes, String> avmURIs,
-                           Class<?> vmInterface) throws Exception {
+    private void registerGenerator(String reqGuri,String uriRequest) throws Exception {
 
-
-
-        this.logMessage("Register avm : " + avmURIs);
-
-        String avmUri = avmURIs.get(ApplicationVM.ApplicationVMPortTypes.INTROSPECTION);
-
-
-        for ( VMdispatcher vmD : VMlist ) {
-            if (vmD.getUri().equals(avmUri)){
+        for ( ReqGDispatcher reqG : ReqGenList) {
+            if (reqG.getUri().equals(reqGuri)){
                 this.logMessage("Register AVM : alredy in list.");
                 return;
             }
         }
 
 
-        RequestSubmissionOutboundPort rsopVM = new RequestSubmissionOutboundPort(this);
-        this.addPort(rsopVM);
-        rsopVM.publishPort();
-        this.doPortConnection(rsopVM.getPortURI(),avmUri,
+        RequestNotificationOutboundPort rnopReqG = new RequestNotificationOutboundPort(this);
+        this.addPort(rnopReqG);
+        rnopReqG.publishPort();
+        this.doPortConnection(rnopReqG.getPortURI(),reqGuri,
                 RequestSubmissionConnector.class.getCanonicalName() );
 
 
-        RequestNotificationInboundPort rnipVM = new RequestNotificationInboundPort(this);
-        this.addPort(rnipVM);
-        rnipVM.publishPort();
 
-        this.doPortConnection(rnipVM.getPortURI(),avmUri,
-                RequestNotificationHandlerI.class.getCanonicalName() );
+        ReqGDispatcher reqG = new ReqGDispatcher(reqGuri,rnopReqG);
+        ReqGenList.add(reqG);
 
+        this.logMessage( rnopReqG.getPortURI() + " has been added.");
 
-        VMdispatcher vm = new VMdispatcher(avmUri,rsopVM,rnipVM,avmURIs);
-        VMlist.add(vm);
-
-        this.logMessage(this.UriVM + " : " + avmURIs + " has been added.");
+       //TODO remetre enleve pour Test
+        //  rNoutP_AC.notifyRequestTermination(new RequestP(uriRequest,null,0,RequestIP.RequestType.REPONSE_DISPATCHER));
 
     }
     @Override
     public void start() throws ComponentStartException {
         super.start();
         try {
+            //TODO a déparentéser utilise pour l'exemple
+            // this.doPortConnection(this.rNoutP_AC.getPortURI(),this.UriAdmissionControleur,
+            //       RequestSubmissionConnector.class.getCanonicalName());
 
-            this.doPortConnection(this.rSoutP_VM.getPortURI(),this.UriVM,
-                    RequestSubmissionConnector.class.getCanonicalName());
-            //this.doPortConnection(this.rNoutP_GN,this.UriCA, RequestSubmissionConnector.class.getCanonicalName());
+            for(Pair<String,String> vmUri : this.initialUriVM) {
+                this.registerVM(vmUri.getFirst(), vmUri.getSecond());
+                this.logMessage("add VM : "+vmUri.getFirst()+" with parametred port : "+vmUri.getSecond());
+            }
+            for(Pair<String,String> reqGenUri : this.initialUriReqGen) {
+                this.registerGenerator(reqGenUri.getFirst(), reqGenUri.getSecond());
+                this.logMessage("add request generator with botification port URI = " + reqGenUri.getFirst());
+            }
+
+
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -230,14 +302,15 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
 
     @Override
     public void finalise() throws Exception {
-        this.doPortDisconnection(this.UriVM);
-        this.rNoutP_GN.doDisconnection();
-        this.rSinP_GN.doDisconnection();
-        this.rSoutP_VM.doDisconnection();
-        this.rNinP_VM.doDisconnection();
-        for (VMdispatcher vm : VMlist) {
+       // this.doPortDisconnection(this.Uri);
+        //this.reqNotifIN_Port.doDisconnection();
+        //this.reqSubmiIN_Port.doDisconnection();
+        //this.rNoutP_AC.doDisconnection();
+        for (VMdispatcher vm : VMlist)
             vm.terminate();
-        }
+        for (ReqGDispatcher reqG : this.ReqGenList)
+            reqG.terminate();
+
         super.finalise();
     }
 
@@ -245,13 +318,15 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
     public void shutdown() throws ComponentShutdownException {
 
         try {
-            this.rSoutP_VM.unpublishPort() ;
-            this.rNinP_VM.unpublishPort() ;
-            this.rSinP_GN.unpublishPort();
-            this.rNoutP_GN.unpublishPort();
-            for (VMdispatcher vm : VMlist) {
+            //this.doPortDisconnection(this.Uri);
+            this.reqNotifIN_Port.unpublishPort();
+            this.reqSubmiIN_Port.unpublishPort();
+            //this.rNoutP_AC.unpublishPort() ;
+            for (VMdispatcher vm : VMlist)
                 vm.shutdown();
-            }
+            for (ReqGDispatcher reqG : this.ReqGenList)
+                reqG.shutdown();
+
         } catch (Exception e) {
             throw new ComponentShutdownException(e) ;
         }
@@ -271,8 +346,48 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
 
 
     @Override
-    public void acceptRequestTerminationNotification(RequestI r) throws Exception {
-        rNoutP_GN.notifyRequestTermination(r);
+    public void acceptRequestTerminationNotification(RequestIP r) throws Exception {
+        switch (r.getType()) {
+            case REPONSE_CHARGE:
+                VMdispatcher vmData =  requestCharge.get(r.getRequestURI());
+                vmData.setCharge(r.getValue());
+                requestCharge.remove(r.getRequestURI());
+                //notification terminaison
+                break;
+
+            case REPONSE_INTSTRUCTION:
+                Pair<ReqGDispatcher,Long> reqD = this.requestSubmision.get(r.getRequestURI());
+                if (reqD == null)
+                    return;
+                this.requestSubmision.remove(r.getRequestURI());
+
+                long tempsPrésent = System.currentTimeMillis();
+                long tempCalcule = tempsPrésent - reqD.getSecond();
+                this.tempsReponseRequete.add(new Pair<>(tempsPrésent,tempCalcule));
+
+                reqD.getFirst().notification(r);
+                this.logMessage("Reponce from VM receve in : "+tempCalcule+" millis for the request with URI = "+r.getRequestURI());
+                break;
+
+        }
+
+    }
+    public long tempsMoyen(){
+        return this.tempsMoyen((long) 0);
+    }
+    public long tempsMoyen(long temps) {
+
+        long acc = 0;
+        long nb = 0;
+        for (Pair<Long, Long> temp : tempsReponseRequete)
+            if (temp.getFirst() > temps) {
+                acc += temp.getSecond();
+                nb++;
+            }
+        if (nb<=0)
+            return acc;
+        return (acc /  nb);
+
     }
 
 }

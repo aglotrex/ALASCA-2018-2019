@@ -10,8 +10,11 @@ import fr.sorbonne_u.datacenter.hardware.computers.Computer;
 import fr.sorbonne_u.datacenter.hardware.processors.Processor;
 import fr.sorbonne_u.datacenter.hardware.tests.ComputerMonitor;
 import fr.sorbonne_u.datacenter.software.applicationvm.ApplicationVM;
-import fr.sorbonne_u.datacenterclient.requestgenerator.RequestGenerator;
 import RequestDispatcher.RequestDispatcher;
+import org.apache.commons.math3.util.Pair;
+import RequestGenerator.RequestGenerator;
+
+import static RequestDispatcher.RequestDispatcher.PortTypeRequestDispatcher.REQUEST_NOTIFICATION_IN;
 
 public class				TestRequestDispatcher
 		extends		AbstractCVM
@@ -34,10 +37,10 @@ public class				TestRequestDispatcher
 	/** 	Application virtual machine component.							*/
 	protected ApplicationVM							vm ;
 	protected ApplicationVM							vm1 ;
-	/** 	RequestUri generator component.										*/
+	/** 	RequestP generator component.										*/
 	protected RequestGenerator						rg ;
 
-	/**		RequestUri dispatcher component.								*/
+	/**		RequestP dispatcher component.								*/
 	protected RequestDispatcher rd ;
 
 	/** Integrator component.											*/
@@ -130,21 +133,34 @@ public class				TestRequestDispatcher
 		this.vm1.toggleTracing() ;
 		this.vm1.toggleLogging() ;
 		// --------------------------------------------------------------------
-
-
+		String RequestSubmissionDispatcherLinktoVM1= java.util.UUID.randomUUID().toString();
+		String RequestSubmissionDispatcherLinktoVM2= java.util.UUID.randomUUID().toString();
+		ArrayList<Pair<String,String>> vm = new ArrayList<>();
+		vm.add(new Pair<>(RequestNotificationInboundPortURIdispatcher,RequestSubmissionDispatcherLinktoVM1));
+		vm.add(new Pair<>(RequestNotificationInboundPortURI,RequestSubmissionDispatcherLinktoVM2));
 		// --------------------------------------------------------------------
 		// Creating the request dispatcher component.
 		// --------------------------------------------------------------------
-		this.rd = new RequestDispatcher(
-				1,
-				1,
-				"rd",RequestSubmissionInboundPortURIdispatcher,
-				new ArrayList<>(),
-				RequestNotificationInboundPortURI,
-				RequestNotificationInboundPortURIdispatcher
-				);
-		rd.registerVM(RequestSubmissionInboundPortURIAVM0);
-		rd.registerVM(RequestSubmissionInboundPortURIAVM1);
+
+		HashMap<RequestDispatcher.PortTypeRequestDispatcher,String> uriRD =
+				new HashMap<>();
+		uriRD.put(RequestDispatcher.PortTypeRequestDispatcher.DISPATCHER_URI ,
+				java.util.UUID.randomUUID().toString());
+
+		uriRD.put(		RequestDispatcher.PortTypeRequestDispatcher.REQUEST_NOTIFICATION_IN,
+						RequestNotificationInboundPortURIdispatcher);
+
+		uriRD.put(		RequestDispatcher.PortTypeRequestDispatcher.REQUEST_SBMISSION_IN,
+						RequestSubmissionInboundPortURIdispatcher);
+		ArrayList<Pair<String,String>> uriGENERATor = new ArrayList<Pair<String,String>>() ;
+		uriGENERATor.add(new Pair<>(RequestNotificationInboundPortURI,java.util.UUID.randomUUID().toString()));
+
+		this.rd = new RequestDispatcher(1, 1,
+				"rd",     // uri port notification Controleur PAS DE CONTROLLEUR DANS L'exemple
+				uriRD, // liste de uris imposé au Dispatcher a la création
+				vm, // liste des uris des VM de base + uri des Port de somision a crée
+				uriGENERATor //list des Génerateur de base + uri de larequete associé a la reponse du disâtcher
+		);
 		this.addDeployedComponent(rd);
 		this.rd.toggleTracing();
 		this.rd.toggleLogging();
@@ -159,7 +175,6 @@ public class				TestRequestDispatcher
 				RequestSubmissionInboundPortURIdispatcher,
 				RequestNotificationInboundPortURI) ;
 		this.addDeployedComponent(rg) ;
-
 		// Toggle on tracing and logging in the request generator to
 		// follow the submission and end of execution notification of
 		// individual requests.
