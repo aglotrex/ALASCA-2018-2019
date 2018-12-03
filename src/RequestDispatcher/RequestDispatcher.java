@@ -4,7 +4,8 @@ import Handler.RequestNotificationHandlerIP;
 import Handler.RequestSubmissionHandlerIP;
 import Request.RequestIP;
 import Request.RequestP;
-import RequestDispatcher.DispatcherDataVm.ReqGDispatcher;
+import RequestDispatcher.DispatcherDataVm.DataReqGene;
+import RequestDispatcher.DispatcherDataVm.DataRequest;
 import fr.sorbonne_u.components.AbstractComponent;
 import fr.sorbonne_u.components.exceptions.ComponentShutdownException;
 import fr.sorbonne_u.components.exceptions.ComponentStartException;
@@ -14,7 +15,7 @@ import fr.sorbonne_u.datacenter.software.ports.RequestNotificationInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestNotificationOutboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionOutboundPort;
-import RequestDispatcher.DispatcherDataVm.VMdispatcher;
+import RequestDispatcher.DispatcherDataVm.DataVM;
 import org.apache.commons.math3.util.Pair;
 
 import java.util.ArrayList;
@@ -30,18 +31,17 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
     protected RequestNotificationInboundPort reqNotifIN_Port;
     protected RequestSubmissionInboundPort   reqSubmiIN_Port;
 
-    protected ArrayList<VMdispatcher> VMlist;
-    protected ArrayList<ReqGDispatcher> ReqGenList;
+    protected ArrayList<DataVM> VMlist;
+    protected ArrayList<DataReqGene> ReqGenList;
 
-    protected ArrayList<Pair<String,String>> initialUriVM;
-    protected ArrayList<Pair<String,String>> initialUriReqGen;
+    protected ArrayList<String> initialUriVM;
+    protected ArrayList<String> initialUriReqGen;
 
 
     protected RequestNotificationOutboundPort rNoutP_AC;
 
-    protected HashMap<String,Pair<ReqGDispatcher,Long>> requestSubmision;
+    protected HashMap<String, DataRequest> requestSubmision;
 
-    protected HashMap<String,VMdispatcher> requestCharge;
 
     protected ArrayList<Pair<Long,Long>> tempsReponseRequete;
 
@@ -66,12 +66,12 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
                 this.registerVM(r.getURI());
                 break;
             case ADD_GENERATOR:
-                this.registerGenerator(r.getURI(),r.getRequestURI());
+                this.registerGenerator(r.getURI());
                 break;
             case REQUEST_INSTRUSCTION:
                 this.logMessage(this.Uri + " dispatcher receve instruction ");
-                ReqGDispatcher reqG = null;
-                for (ReqGDispatcher reqGtmp :ReqGenList ) {
+                DataReqGene reqG = null;
+                for (DataReqGene reqGtmp :ReqGenList ) {
                     if( reqGtmp.getUri().equals(r.getURI())) {
                         reqG = reqGtmp;
                         break;
@@ -80,18 +80,18 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
                 if (reqG == null)
                     return;
 
-                VMdispatcher vm = VMlist.remove(0);
+                DataVM vm = VMlist.remove(0);
 
-
-                this.requestSubmision.put(r.getRequestURI(),new Pair<>(reqG,System.currentTimeMillis()));
+                DataRequest dataREQ = new DataRequest(reqG,vm,true,r.getValue());
+                this.requestSubmision.put(r.getRequestURI(),dataREQ);
                 vm.acceptRequestSubmission(r, Uri);
                 VMlist.add(vm);
                 break;
 
 
             case REMOVE_VM:
-                VMdispatcher supp=null;
-                for(VMdispatcher vmD : VMlist) {
+                DataVM supp=null;
+                for(DataVM vmD : VMlist) {
                     if (vmD.getUri().equals(r.getURI())) {
                         supp = vmD;
                         break;
@@ -101,8 +101,8 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
                 supp.terminate();
                 break;
             case REMOVE_GENERATOR:
-                ReqGDispatcher suppGE = null;
-                for(ReqGDispatcher geD : this.ReqGenList) {
+                DataReqGene suppGE = null;
+                for(DataReqGene geD : this.ReqGenList) {
                     if (geD.getUri().equals(r.getURI())) {
                         suppGE = geD;
                         break;
@@ -156,8 +156,8 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
     public RequestDispatcher(int nbThreads, int nbSchedulableThreads,
                              String uriCA,      // uri port notification Controleur
                              HashMap<PortTypeRequestDispatcher,String> uriDispatcher, // liste de uris imposé au Dispatcher a la création
-                             ArrayList<Pair<String,String>> uriVMs, // liste des uris des VM de base + uri des Port de somision a crée
-                             ArrayList<Pair<String,String>> urireqG //list des Génerateur de base + uri de larequete associé a la reponse du disâtcher
+                             ArrayList<String> uriVMs, // liste des uris des VM de base + uri des Port de somision a crée
+                             ArrayList<String> urireqG //list des Génerateur de base + uri de larequete associé a la reponse du disâtcher
                             ) throws Exception {
         super(nbThreads, nbSchedulableThreads);
         this.UriAdmissionControleur = uriCA;
@@ -197,7 +197,7 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
                 try {
                     int indice = 0;
                     while (true) {
-                        for(VMdispatcher vm : VMlist){
+                        for(DataVM vm : VMlist){
                             String requestUri = java.util.UUID.randomUUID().toString();
 
                             //vm.acceptRequestSubmissionAndNotify(new RequestP(requestUri,null,0,
@@ -217,12 +217,9 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
         }));
     }
     public void registerVM(String avmUri) throws Exception {
-        registerVM(avmUri,java.util.UUID.randomUUID().toString());
-    }
-    public void registerVM(String avmUri,String uriPortVM) throws Exception {
 
 
-        for ( VMdispatcher vmD : VMlist ) {
+        for ( DataVM vmD : VMlist ) {
             if (vmD.getUri().equals(avmUri)){
                 this.logMessage("Register AVM : alredy in list.");
                 return;
@@ -230,7 +227,7 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
         }
 
 
-        RequestSubmissionOutboundPort rsopVM = new RequestSubmissionOutboundPort(uriPortVM,this);
+        RequestSubmissionOutboundPort rsopVM = new RequestSubmissionOutboundPort(this);
         this.addPort(rsopVM);
         rsopVM.publishPort();
         this.doPortConnection(rsopVM.getPortURI(),avmUri,
@@ -238,16 +235,16 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
 
 
 
-        VMdispatcher vm = new VMdispatcher(avmUri,rsopVM);
+        DataVM vm = new DataVM(avmUri,rsopVM);
         VMlist.add(vm);
 
         this.logMessage( rsopVM.getPortURI() + " has been added.");
 
 
     }
-    private void registerGenerator(String reqGuri,String uriRequest) throws Exception {
+    private void registerGenerator(String reqGuri) throws Exception {
 
-        for ( ReqGDispatcher reqG : ReqGenList) {
+        for ( DataReqGene reqG : ReqGenList) {
             if (reqG.getUri().equals(reqGuri)){
                 this.logMessage("Register AVM : alredy in list.");
                 return;
@@ -263,7 +260,7 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
 
 
 
-        ReqGDispatcher reqG = new ReqGDispatcher(reqGuri,rnopReqG);
+        DataReqGene reqG = new DataReqGene(reqGuri,rnopReqG);
         ReqGenList.add(reqG);
 
         this.logMessage( rnopReqG.getPortURI() + " has been added.");
@@ -280,13 +277,13 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
             // this.doPortConnection(this.rNoutP_AC.getPortURI(),this.UriAdmissionControleur,
             //       RequestSubmissionConnector.class.getCanonicalName());
 
-            for(Pair<String,String> vmUri : this.initialUriVM) {
-                this.registerVM(vmUri.getFirst(), vmUri.getSecond());
-                this.logMessage("add VM : "+vmUri.getFirst()+" with parametred port : "+vmUri.getSecond());
+            for(String vmUri : this.initialUriVM) {
+                this.registerVM(vmUri);
+                this.logMessage("add VM : "+vmUri);
             }
-            for(Pair<String,String> reqGenUri : this.initialUriReqGen) {
-                this.registerGenerator(reqGenUri.getFirst(), reqGenUri.getSecond());
-                this.logMessage("add request generator with botification port URI = " + reqGenUri.getFirst());
+            for(String reqGenUri : this.initialUriReqGen) {
+                this.registerGenerator(reqGenUri);
+                this.logMessage("add request generator with botification port URI = " + reqGenUri);
             }
 
 
@@ -306,9 +303,9 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
         //this.reqNotifIN_Port.doDisconnection();
         //this.reqSubmiIN_Port.doDisconnection();
         //this.rNoutP_AC.doDisconnection();
-        for (VMdispatcher vm : VMlist)
+        for (DataVM vm : VMlist)
             vm.terminate();
-        for (ReqGDispatcher reqG : this.ReqGenList)
+        for (DataReqGene reqG : this.ReqGenList)
             reqG.terminate();
 
         super.finalise();
@@ -322,9 +319,9 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
             this.reqNotifIN_Port.unpublishPort();
             this.reqSubmiIN_Port.unpublishPort();
             //this.rNoutP_AC.unpublishPort() ;
-            for (VMdispatcher vm : VMlist)
+            for (DataVM vm : VMlist)
                 vm.shutdown();
-            for (ReqGDispatcher reqG : this.ReqGenList)
+            for (DataReqGene reqG : this.ReqGenList)
                 reqG.shutdown();
 
         } catch (Exception e) {
@@ -348,25 +345,18 @@ public class RequestDispatcher extends AbstractComponent implements RequestSubmi
     @Override
     public void acceptRequestTerminationNotification(RequestIP r) throws Exception {
         switch (r.getType()) {
-            case REPONSE_CHARGE:
-                VMdispatcher vmData =  requestCharge.get(r.getRequestURI());
-                vmData.setCharge(r.getValue());
-                requestCharge.remove(r.getRequestURI());
-                //notification terminaison
-                break;
 
             case REPONSE_INTSTRUCTION:
-                Pair<ReqGDispatcher,Long> reqD = this.requestSubmision.get(r.getRequestURI());
+                DataRequest reqD = this.requestSubmision.get(r.getRequestURI());
+
                 if (reqD == null)
                     return;
                 this.requestSubmision.remove(r.getRequestURI());
 
-                long tempsPrésent = System.currentTimeMillis();
-                long tempCalcule = tempsPrésent - reqD.getSecond();
-                this.tempsReponseRequete.add(new Pair<>(tempsPrésent,tempCalcule));
+                this.tempsReponseRequete.add(reqD.reception(r));
 
-                reqD.getFirst().notification(r);
-                this.logMessage("Reponce from VM receve in : "+tempCalcule+" millis for the request with URI = "+r.getRequestURI());
+
+                this.logMessage("Reponce from VM receve reponce for  URI = "+r.getRequestURI());
                 break;
 
         }

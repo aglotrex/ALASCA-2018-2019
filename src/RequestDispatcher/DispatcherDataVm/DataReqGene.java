@@ -5,13 +5,13 @@ import fr.sorbonne_u.datacenter.software.interfaces.RequestI;
 import fr.sorbonne_u.datacenter.software.ports.RequestNotificationOutboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionOutboundPort;
 
-public class ReqGDispatcher {
+public class DataReqGene {
     private String Uri ;
     private RequestNotificationOutboundPort vmRsop;
 
 
-        public ReqGDispatcher(String DispatcherUri,
-                              RequestNotificationOutboundPort  rnop) throws Exception {
+        public DataReqGene(String DispatcherUri,
+                           RequestNotificationOutboundPort  rnop) throws Exception {
             this.Uri = DispatcherUri;
             this.vmRsop = rnop;
         }

@@ -1,25 +1,21 @@
 package RequestDispatcher.DispatcherDataVm;
 
-import Request.RequestIP;
-import fr.sorbonne_u.datacenter.software.applicationvm.ApplicationVM;
 import fr.sorbonne_u.datacenter.software.interfaces.RequestI;
-import fr.sorbonne_u.datacenter.software.ports.RequestNotificationInboundPort;
 import fr.sorbonne_u.datacenter.software.ports.RequestSubmissionOutboundPort;
 
-import java.util.HashMap;
-import java.util.Random;
-
-public class VMdispatcher implements Comparable {
+public class DataVM implements Comparable {
     private String Uri;
     private RequestSubmissionOutboundPort  vmRsop;
     private long charge;
+    private long timeSinceModification;
 
 
-    public VMdispatcher(String avmUri,
-                        RequestSubmissionOutboundPort  rsop) throws Exception {
+    public DataVM(String avmUri,
+                  RequestSubmissionOutboundPort  rsop) throws Exception {
         this.Uri = avmUri;
         this.vmRsop = rsop;
         this.charge =0;
+        this.timeSinceModification=1;
     }
     public void terminate () throws Exception {
 
@@ -34,13 +30,15 @@ public class VMdispatcher implements Comparable {
     public void acceptRequestSubmissionAndNotify(RequestI r) throws Exception {
         vmRsop.submitRequestAndNotify(r);
     }
+    public void addCharge(long modif,long currentTime){
+        this.charge += charge;
 
-    public void setCharge(long charge) {
-        this.charge = charge;
+        if (charge < 0) //
+            timeSinceModification= currentTime;
     }
 
     public long getCharge() {
-        return charge;
+        return charge/timeSinceModification;
     }
 
     public String getUri() {
@@ -49,7 +47,7 @@ public class VMdispatcher implements Comparable {
 
     @Override
     public int compareTo(Object o) {
-        return (int) ( ((VMdispatcher) o).getCharge() - this.charge);
+        return (int) ( ((DataVM) o).getCharge() - this.charge);
     }
 
     public void shutdown() throws Exception {

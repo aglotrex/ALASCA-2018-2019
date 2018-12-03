@@ -63,8 +63,6 @@ public interface RequestIP
     public long			getValue() ;
 
     public static enum	RequestType{
-        REQUEST_CHARGE,
-        REPONSE_CHARGE,
         REQUEST_INSTRUSCTION,
         REPONSE_INTSTRUCTION,
         ADD_VM,
